@@ -127,6 +127,7 @@
 #include "Poco/String.h"
 
 #include "app/BlockMemory.h"
+#include "app/ModbusRun.h"
 
 using namespace std;
 using namespace Poco;
@@ -281,6 +282,8 @@ protected:
 		{
 			terminate();
 		}
+		std::ofstream fs((config().getString("application.dir")+"/ADC.pid").c_str(), std::ofstream::trunc);
+		fs << getpid();
 		// create logger
 		AutoPtr<SplitterChannel> DoubleChannel(new SplitterChannel());
 		Path current(Path::current(), Path::PATH_UNIX);
@@ -325,9 +328,9 @@ protected:
 		Logger& logger = Logger::get("Initialize");
 		logger.information("Process Initialize");
 		Thread::sleep(config().getInt("PROGRAM.SLEEP", 0));
-
 		adc = new BlockMemory(&config());
 		adc->Load(config().getString("ADC.DESCRIPTION_FILE"));
+		mr = new ModbusRun(UART_PL4, &config());
 		nc = new NotificationCenter;
 		nc->addObserver(Observer<ADC, Notification>(*this, &ADC::handleReload));
 		ThreadPool::defaultPool().addCapacity(32); //Set max thread of ThreadPool for TCPServerParams
@@ -336,8 +339,6 @@ protected:
 	void uninitialize()
 	{
 		// add your own uninitialization code here
-		Logger& logger = Logger::get("Uninitialize");
-		logger.information("shutting down!");
 		ServerApplication::uninitialize();
 	}
 
@@ -350,6 +351,14 @@ protected:
 	int main(const ArgVec& args)
 	{
 		Logger& logger = Logger::get("Main");
+
+		Timer Modbus_Timer(0, config().getInt("MODBUS.DELAY_TIME", 10000));
+		if(config().getBool("MODBUS.START"))
+		{
+			logger.information("啟動MODBUS COLLECT每%d秒執行一次", (config().getInt("MODBUS.DELAY_TIME", 10000)/1000));
+			Modbus_Timer.start(TimerCallback<ModbusRun>(*mr, &ModbusRun::Background));
+		}
+
 		Timer COLLECT_Timer(0, config().getInt("COLLECT.DELAY_TIME", 10000));
 		Timer IntervalCollect_Timer(0, config().getInt("INTERVAL_COLLECT.DELAY_TIME", 10000));
 		Timer PHM_Timer(0, config().getInt("PHM.PHM_DELAY_TIME", 10000));
@@ -496,6 +505,7 @@ private:
 	Thread runnableProduciton;
 	NotificationCenter *nc;
 	BlockMemory *adc;
+	ModbusRun *mr;
 	bool _helpRequested;
 };
 

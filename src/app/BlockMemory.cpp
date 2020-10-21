@@ -21,6 +21,10 @@ runnableUpload(*this, &BlockMemory::Upload_2)
 	CurrentThreshold[current_60A] = 20;
 	OneTimeCollect = pconfig->getUInt("ADC.COLLECT_NUMBER");
 	CHANNEL_SIZE = pconfig->getUInt("ADC.CHANNEL_SIZE");
+	if(pconfig->getBool("ADC.INTO_REDIS"))
+	{
+		rb = new RedisBridge("127.0.0.1", 6379);
+	}
 }
 
 BlockMemory::~BlockMemory(){}
@@ -57,19 +61,29 @@ void BlockMemory::Load(std::string fileName)
 	Dynamic::Var DynamicResult = str_parser.parse(ostr.str());
 
 	//Extract array pointer
-	Array::Ptr json_ptr = DynamicResult.extract<JSON::Array::Ptr>();
+	JSON::Array::Ptr json_ptr = DynamicResult.extract<JSON::Array::Ptr>();
 	uint index = pconfig->getUInt("ADC.INDEX_OF_ARRAY");
 	if(index > json_ptr->size())
 	{
 		logger.fatal("%d is greater than size of json array", index);
 		return;
 	}
-	Array::Ptr json_ptr_2 =  json_ptr->getArray(index); //second level of array
+	JSON::Array::Ptr json_ptr_2 =  json_ptr->getArray(index); //second level of array
 	for(uint i=0; i< json_ptr_2->size(); i++)
 	{
 		object_temp = json_ptr_2->getObject(i);
 		adc_struct_temp.channel = object_temp -> getValue<int>("port");
 		adc_struct_temp.type =  static_cast<CalculateType>(object_temp ->getValue<int>("type"));
+		if(object_temp->has("strategy"))
+		{
+			adc_struct_temp.strategy = object_temp -> getValue<std::string>("strategy");
+		}
+		else
+		{
+			//預設都是 INTERVAL_COLLECT
+			adc_struct_temp.strategy = "INTERVAL_COLLECT";
+		}
+
 		ADC_sensors.push_back(adc_struct_temp);
 	}
 	//MultipleAreaReads_size = MultipleAreaReads.size();
@@ -1010,18 +1024,37 @@ float BlockMemory::Convet(T value, CalculateType type)
 	{
 		r = ((1.0 * value * 6 / (3.3*4095.0/5)) - 3);
 	}
-	else if(type == current_5A || type == current_10A || type == current_15A ||
-			type == current_20A || type == current_30A || type == current_60A )	// AC
+	else if(type == current_5A )	// AC
 	{
-		r = (((((1.0 * value) - 2048.0)* 5000.00 * 5.0) / 4096.0))/1000;
+		r = (((((1.0 * value) - 2048.0 - 50)* 5000.00 * 5.0) / 4096.0))/1000;
+	}
+	else if(type == current_10A )
+	{
+		r = (((((1.0 * value) - 2048.0 - 50)* 5000.00 * 10.0) / 4096.0))/1000;
+	}
+	else if(type == current_15A )
+	{
+		r = (((((1.0 * value) - 2048.0 - 50)* 5000.00 * 15.0) / 4096.0))/1000;
+	}
+	else if(type == current_20A )
+	{
+		r = (((((1.0 * value) - 2048.0 - 50)* 5000.00 * 20.0) / 4096.0))/1000;
+	}
+	else if(type == current_30A )
+	{
+		r = (((((1.0 * value) - 2048.0 - 50)* 5000.00 * 30.0) / 4096.0))/1000;
+	}
+	else if(type == current_60A )
+	{
+		r = (((((1.0 * value) - 2048.0 - 50)* 5000.00 * 60.0) / 4096.0))/1000;
 	}
 	else if(type == DC_25A)	//DC
 	{
-		r = (((((1.0 * value))* 5.0) / 4096.0))/0.16 ;
+		r = (((((1.0 * value))* 5.0) / 4096.0))/0.16;
 	}
 	else if(type == DCCurrent)	//DC
 	{
-		r = (((((1.0 * value) - 2048.0)* 5.0) / 4096.0)) ;
+		r = (((((1.0 * value) - 2048.0) * 5.0) / 4096.0));
 	}
 	else if(type == Conductivity)	//導電度計
 	{
@@ -1033,6 +1066,7 @@ float BlockMemory::Convet(T value, CalculateType type)
 	}
 	return r;
 }
+
 void BlockMemory::Collector(Timer& timer)
 {
 	int each_channel_size = 1024; // 0x400
@@ -1045,210 +1079,606 @@ void BlockMemory::Collector(Timer& timer)
     union
 	{
     	u32 u;
-    	int f;
+    	float f;
+    	int i;
     }un[channel_size];
-
-	for(uint i=0; i<ADC_sensors.size(); i++)
-	{
-		switch(ADC_sensors[i].channel / 16)
+    try
+    {
+		for(uint i=0; i<ADC_sensors.size(); i++)
 		{
-			case 0:
-				start_address = brame_1;
-				break;
-			case 1:
-				start_address = brame_2;
-				break;
-			case 2:
-				start_address = brame_3;
-				break;
-			case 3:
-				start_address = brame_4;
-				break;
-			case 4:
-				start_address = brame_5;
-				break;
-			default:
-				logger.fatal("channel %u over 64", ADC_sensors[i].channel);
-				return;
-		}
-		start_address = start_address + ((ADC_sensors[i].channel % 16) * channel_bram_size);
-		int fd = open("/dev/mem", O_RDWR | O_SYNC);
-		if(fd == -1)
-		{
-			logger.fatal("Can not open /dev/mem");
-			return;
-		}
-		bram32_ptr = (u32 *)mmap(NULL, channel_bram_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, start_address);
-//		memcpy(bram32_block, bram32_ptr, channel_bram_size); //0x1000 * 16 = 0x10000
-//		munmap(bram32_ptr, channel_bram_size); //munmap bram32_ptr
-		close(fd);
-		for(uint c=0; c<channel_size; c++)
-		{
-			un[c].u = *(bram32_ptr + c);
-		}
-
-		index = (un[0].u >> 12)/4;
-		counter = channel_size - 2;
-		//copy un[] to arr[]
-		while(counter > 0)
-		{
-			if(counter <= index)
+			if(ADC_sensors[i].strategy == "COLLECT")
 			{
-				arr[channel_size - counter -2] = un[index - counter + 1].f;
-			}
-			else //   > index
-			{
-				arr[channel_size - counter -2] = un[channel_size + index - counter -1].f;
-			}
-			counter--;
-		}
-
-		if(ADC_sensors[i].type == axis)//震動
-		{
-			if(pconfig->getBool("ADC.ENABLE_AXIS"))
-			{
-				payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
-				payload << ",utc=+8 "; //狀態描述 -> 時區
-				for(uint m=0; m<(channel_size-2); m++)
+				switch(ADC_sensors[i].channel / 16)
 				{
-					payload << m << "=" << Convet<int>(arr[m], ADC_sensors[i].type);
-					if(m != channel_size-3)
+					case 0:
+						start_address = brame_1;
+						break;
+					case 1:
+						start_address = brame_2;
+						break;
+					case 2:
+						start_address = brame_3;
+						break;
+					case 3:
+						start_address = brame_4;
+						break;
+					case 4:
+						start_address = brame_5;
+						break;
+					default:
+						logger.fatal("channel %u over 64", ADC_sensors[i].channel);
+						return;
+				}
+				start_address = start_address + ((ADC_sensors[i].channel % 16) * channel_bram_size);
+				int fd = open("/dev/mem", O_RDWR | O_SYNC);
+				if(fd == -1)
+				{
+					logger.fatal("Can not open /dev/mem");
+					return;
+				}
+				bram32_ptr = (u32 *)mmap(NULL, channel_bram_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, start_address);
+		//		memcpy(bram32_block, bram32_ptr, channel_bram_size); //0x1000 * 16 = 0x10000
+		//		munmap(bram32_ptr, channel_bram_size); //munmap bram32_ptr
+				close(fd);
+				for(uint c=0; c<channel_size; c++)
+				{
+					un[c].u = *(bram32_ptr + c);
+				}
+				index = (un[0].u >> 12)/4;
+				counter = channel_size - 2;
+				//copy un[] to arr[]
+				while(counter > 0)
+				{
+					if(counter <= index)
 					{
-						payload << ",";
+						arr[channel_size - counter -2] =
+								(pconfig->getBool("ADC.DO_CONVERT") ?
+								un[index - counter + 1].i :
+								un[index - counter + 1].f);
+					}
+					else //   > index
+					{
+						arr[channel_size - counter -2] =
+								(pconfig->getBool("ADC.DO_CONVERT") ?
+								un[channel_size + index - counter -1].i:
+								un[channel_size + index - counter -1].f);
+					}
+					counter--;
+				}
+				/*
+				if(ADC_sensors[i].type == axis)//震動
+				{
+					if(pconfig->getBool("ADC.ENABLE_AXIS"))
+					{
+						payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
+						payload << ",utc=+8 "; //狀態描述 -> 時區
+						for(uint m=0; m<(channel_size-2); m++)
+						{
+							payload << m << "=" << (pconfig->getBool("ADC.DO_CONVERT")?
+									Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+							if(m != channel_size-3)
+							{
+								payload << ",";
+							}
+						}
+						if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
+						{
+							for(uint m=0; m<(channel_size-2); m++)
+							{
+								*outputs[i] << (pconfig->getBool("ADC.DO_CONVERT")?
+										Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+								*outputs[i] << ",";
+							}
+							*outputs[i] << endl;
+						}
 					}
 				}
-				if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
+				*/
+				if(ADC_sensors[i].type == current_5A || ADC_sensors[i].type == current_10A ||
+						ADC_sensors[i].type == current_15A || ADC_sensors[i].type == current_20A ||
+						ADC_sensors[i].type == current_30A || ADC_sensors[i].type == current_60A ) //交流電
 				{
-					for(uint m=0; m<(channel_size-2); m++)
+					if(pconfig->getBool("ADC.ENABLE_AC"))
 					{
-						*outputs[i] << Convet<int>(arr[m], ADC_sensors[i].type) << ",";
+						if(isSineWave(arr, 500))
+						{
+//							logger.information("channel[%d] 波形偵測成功", ADC_sensors[i].channel);
+							payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
+							payload << ",utc=+8 "; //狀態描述
+							for(uint m=0; m<220; m++)
+							{
+								payload << m << "=" << (pconfig->getBool("ADC.DO_CONVERT")?
+										Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+								if(m != 220-1)
+								{
+									payload << ",";
+								}
+							}
+							if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
+							{
+								for(uint m=0; m<220; m++)
+								{
+									*outputs[i] << (pconfig->getBool("ADC.DO_CONVERT")?
+											Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+									*outputs[i] << ",";
+								}
+								*outputs[i] << endl;
+							}
+							if(pconfig->getBool("ADC.INTO_REDIS"))
+							{
+								// 計算RMS
+								LocalDateTime now;
+								float square = 0;
+								for(uint m=0; m<430; m++)
+								{
+									square += pow((pconfig->getBool("ADC.DO_CONVERT")?
+											Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]), 2);
+								}
+								rb->set(pconfig->getString("DEVICE.ID") + "_ADC" +  NumberFormatter::format(ADC_sensors[i].channel),
+								NumberFormatter::format(sqrt(square/ (float)(430)), 2) + "," +
+								DateTimeFormatter::format(now, "%Y-%m-%d %H:%M:%S"));
+							}
+						}
+//						else
+//						{
+//							logger.warning("channel[%d] 波形偵測失敗", ADC_sensors[i].channel);
+//						}
 					}
-					*outputs[i] << endl;
 				}
-			}
-		}
-
-		if(ADC_sensors[i].type == current_5A || ADC_sensors[i].type == current_10A ||
-				ADC_sensors[i].type == current_15A || ADC_sensors[i].type == current_20A ||
-				ADC_sensors[i].type == current_30A || ADC_sensors[i].type == current_60A ) //交流電
-		{
-			if(pconfig->getBool("ADC.ENABLE_AC"))
-			{
-//				if(isWave(arr, 43, 2))
-//				{
+				else if(ADC_sensors[i].type == DCCurrent || ADC_sensors[i].type == DC_25A) //DC
+				{
+					if(pconfig->getBool("ADC.ENABLE_DC"))
+					{
+						payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
+						payload << ",utc=+8 "; //狀態描述
+						for(uint m=0; m<200; m++)
+						{
+							payload << m << "=" << (pconfig->getBool("ADC.DO_CONVERT")?
+									Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+							if(m != 200-1)
+							{
+								payload << ",";
+							}
+						}
+						if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
+						{
+							for(uint m=0; m<200; m++)
+							{
+								*outputs[i] << (pconfig->getBool("ADC.DO_CONVERT")?
+										Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+								*outputs[i] << ",";
+							}
+							*outputs[i] << endl;
+						}
+					}
+				}
+				else if(ADC_sensors[i].type == thermistor)//溫度
+				{
+					if(pconfig->getBool("ADC.ENABLE_THERMISTER"))
+					{
+						payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
+						payload << ",utc=+8 "; //狀態描述
+						float mean = std::accumulate(arr.begin(), arr.end(), 0.0)/arr.size();	//計算平均
+						mean = (pconfig->getBool("ADC.DO_CONVERT") ?
+								Convet<float>(mean, ADC_sensors[i].type) : mean);
+						payload << "mean=" << mean;
+						if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
+						{
+							*outputs[i] << (pconfig->getBool("ADC.DO_CONVERT")?
+									Convet<int>(mean, ADC_sensors[i].type) : mean);
+							*outputs[i] << ",";
+							*outputs[i] << endl;
+						}
+					}
+				}
+				else if(ADC_sensors[i].type == Conductivity) //導電度計
+				{
+					if(pconfig->getBool("ADC.ENABLE_CONDUCTIVITY"))
+					{
+						payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
+						payload << ",utc=+8 "; //狀態描述
+						float mean = std::accumulate(arr.begin(), arr.end(), 0.0)/arr.size();	//計算平均
+						mean = pconfig->getBool("ADC.DO_CONVERT") ?
+								Convet<float>(mean, ADC_sensors[i].type) : mean;
+						payload << "mean=" << mean;
+						if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
+						{
+							*outputs[i] << pconfig->getBool("ADC.DO_CONVERT")?
+									Convet<int>(mean, ADC_sensors[i].type) : mean;
+							*outputs[i] << ",";
+							*outputs[i] << endl;
+						}
+					}
+				}
+				else if(ADC_sensors[i].type == Manual)
+				{
 					payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
 					payload << ",utc=+8 "; //狀態描述
-					for(uint m=0; m<200; m++)
+
+					for(uint m=0; m<1022; m++)
 					{
-						payload << m << "=" << Convet<int>(arr[m], ADC_sensors[i].type);
-						if(m != 200-1)
+						payload << m << "=" << (pconfig->getBool("ADC.DO_CONVERT")?
+								Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+						if(m != 1021)
 						{
 							payload << ",";
 						}
 					}
 					if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
 					{
-						for(uint m=0; m<200; m++)
+						for(uint m=0; m<1022; m++)
 						{
-							*outputs[i] << Convet<int>(arr[m], ADC_sensors[i].type) << ",";
+							*outputs[i] << (pconfig->getBool("ADC.DO_CONVERT")?
+									Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+							*outputs[i] << ",";
 						}
 						*outputs[i] << endl;
 					}
-//				}
-//				else
-//				{
-//					logger.warning("channel[%d] 波形偵測失敗", 16*i+k);
-//				}
-			}
-		}
-		else if(ADC_sensors[i].type == DCCurrent || ADC_sensors[i].type == DC_25A) //DC
-		{
-			if(pconfig->getBool("ADC.ENABLE_DC"))
-			{
-				payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
-				payload << ",utc=+8 "; //狀態描述
-				for(uint m=0; m<200; m++)
-				{
-					payload << m << "=" << Convet<int>(arr[m], ADC_sensors[i].type);
-					if(m != 200-1)
+					if(pconfig->getBool("ADC.INTO_REDIS"))
 					{
-						payload << ",";
+						// 計算RMS
+						LocalDateTime now;
+						float square = 0;
+						for(uint m=0; m<1022; m++)
+						{
+							square += pow((pconfig->getBool("ADC.DO_CONVERT")?
+									Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]), 2);
+						}
+						rb->set(pconfig->getString("DEVICE.ID") + "_ADC" +  NumberFormatter::format(ADC_sensors[i].channel),
+						NumberFormatter::format(sqrt(square/ (float)(1022)), 2) + "," +
+						DateTimeFormatter::format(now, "%Y-%m-%d %H:%M:%S"));
 					}
 				}
-				if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
+				else if(ADC_sensors[i].type == pulse)
 				{
-					for(uint m=0; m<200; m++)
+					if(pconfig->getBool("ADC.ENABLE_PULSE"))
 					{
-						*outputs[i] << Convet<int>(arr[m], ADC_sensors[i].type) << ",";
+						payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
+						payload << ",utc=+8 "; //狀態描述
+						for(uint m=0; m<990; m++)
+						{
+							payload << m << "=" << (pconfig->getBool("ADC.DO_CONVERT")?
+									Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+							if(m != 990 -1)
+							{
+								payload << ",";
+							}
+						}
+						if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
+						{
+							for(uint m=0; m < 990; m++)
+							{
+								*outputs[i] << (pconfig->getBool("ADC.DO_CONVERT")?
+										Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+								*outputs[i] << ",";
+							}
+							*outputs[i] << endl;
+						}
 					}
-					*outputs[i] << endl;
 				}
+				payload << endl;
+				munmap(bram32_ptr, channel_bram_size);
 			}
 		}
-		else if(ADC_sensors[i].type == thermistor)//溫度
+	//	cout << "done:" << payload.str()  <<  endl;
+		if(pconfig->getBool("ADC.INTO_DB") && payload.str().length()>0)
 		{
-			if(pconfig->getBool("ADC.ENABLE_THERMISTER"))
-			{
-				payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
-				payload << ",utc=+8 "; //狀態描述
-				float mean = std::accumulate(arr.begin(), arr.end(), 0.0)/arr.size();	//計算平均
-				mean = Convet<float>(mean, ADC_sensors[i].type);
-				payload << "mean=" << mean;
-				if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
-				{
-					*outputs[i] << mean << ",";
-					*outputs[i] << endl;
-				}
-			}
+			this->_ActiveMethod(payload.str());
 		}
-		else if(ADC_sensors[i].type == Conductivity) //導電度計
-		{
-			if(pconfig->getBool("ADC.ENABLE_CONDUCTIVITY"))
-			{
-				payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
-				payload << ",utc=+8 "; //狀態描述
-				float mean = std::accumulate(arr.begin(), arr.end(), 0.0)/arr.size();	//計算平均
-				mean = Convet<float>(mean, ADC_sensors[i].type);
-				payload << "mean=" << mean;
-				if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
-				{
-					*outputs[i] << mean << ",";
-					*outputs[i] << endl;
-				}
-			}
-		}
-		else if(ADC_sensors[i].type == Manual)
-		{
-			payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
-			payload << ",utc=+8 "; //狀態描述
-
-			for(uint m=0; m<1022; m++)
-			{
-				payload << m << "=" << Convet<int>(arr[m], ADC_sensors[i].type);
-
-				if(m != 1021)
-				{
-					payload << ",";
-				}
-			}
-			if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
-			{
-				for(uint m=0; m<1022; m++)
-				{
-					*outputs[i] << Convet<int>(arr[m], ADC_sensors[i].type) << ",";
-				}
-				*outputs[i] << endl;
-			}
-		}
-		payload << endl;
-		munmap(bram32_ptr, channel_bram_size);
 	}
-	cout << "done:" << payload.str()  <<  endl;
-	if(pconfig->getBool("ADC.INTO_DB") && payload.str().length()>0)
+	catch (Exception& exc)
 	{
-		this->_ActiveMethod(payload.str());
+		logger.error(exc.displayText());
 	}
 }
+
+void BlockMemory::_Collector(Timer& timer)
+{
+	int each_channel_size = 1024; // 0x400
+	int channel_bram_size = each_channel_size * 4;	//0x1000
+	std::stringstream payload;
+	std::vector<float> arr(channel_size-2);
+	u32* bram32_ptr;
+	off_t start_address;
+	int index, counter;
+    union
+	{
+    	u32 u;
+    	float f;
+    	int i;
+    }un[channel_size];
+    try
+    {
+		for(uint i=0; i<ADC_sensors.size(); i++)
+		{
+			// iterator for ADC_sensors
+			if(ADC_sensors[i].strategy == "INTERVAL_COLLECT")
+			{
+				// 背景常態執行
+				switch(ADC_sensors[i].channel / 16)
+				{
+					case 0:
+						start_address = brame_1;
+						break;
+					case 1:
+						start_address = brame_2;
+						break;
+					case 2:
+						start_address = brame_3;
+						break;
+					case 3:
+						start_address = brame_4;
+						break;
+					case 4:
+						start_address = brame_5;
+						break;
+					default:
+						logger.fatal("channel %u over 64", ADC_sensors[i].channel);
+						return;
+				}
+				start_address = start_address + ((ADC_sensors[i].channel % 16) * channel_bram_size);
+				int fd = open("/dev/mem", O_RDWR | O_SYNC);
+				if(fd == -1)
+				{
+					logger.fatal("Can not open /dev/mem");
+					return;
+				}
+				bram32_ptr = (u32 *)mmap(NULL, channel_bram_size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, start_address);
+		//		memcpy(bram32_block, bram32_ptr, channel_bram_size); //0x1000 * 16 = 0x10000
+		//		munmap(bram32_ptr, channel_bram_size); //munmap bram32_ptr
+				close(fd);
+				for(uint c=0; c<channel_size; c++)
+				{
+					un[c].u = *(bram32_ptr + c);
+				}
+				index = (un[0].u >> 12)/4;
+				counter = channel_size - 2;
+				//copy un[] to arr[]
+				while(counter > 0)
+				{
+					if(counter <= index)
+					{
+						arr[channel_size - counter -2] =
+								(pconfig->getBool("ADC.DO_CONVERT") ?
+								un[index - counter + 1].i :
+								un[index - counter + 1].f);
+					}
+					else //   > index
+					{
+						arr[channel_size - counter -2] =
+								(pconfig->getBool("ADC.DO_CONVERT") ?
+								un[channel_size + index - counter -1].i:
+								un[channel_size + index - counter -1].f);
+					}
+					counter--;
+				}
+
+				if(ADC_sensors[i].type == axis)//震動
+				{
+					if(pconfig->getBool("ADC.ENABLE_AXIS"))
+					{
+						payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
+						payload << ",utc=+8 "; //狀態描述 -> 時區
+						for(uint m=0; m<(channel_size-2); m++)
+						{
+							payload << m << "=" << (pconfig->getBool("ADC.DO_CONVERT")?
+									Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+							if(m != channel_size-3)
+							{
+								payload << ",";
+							}
+						}
+						if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
+						{
+							for(uint m=0; m<(channel_size-2); m++)
+							{
+								*outputs[i] << (pconfig->getBool("ADC.DO_CONVERT")?
+										Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+								*outputs[i] << ",";
+							}
+							*outputs[i] << endl;
+						}
+					}
+				}
+
+				if(ADC_sensors[i].type == current_5A || ADC_sensors[i].type == current_10A ||
+						ADC_sensors[i].type == current_15A || ADC_sensors[i].type == current_20A ||
+						ADC_sensors[i].type == current_30A || ADC_sensors[i].type == current_60A ) //交流電
+				{
+					if(pconfig->getBool("ADC.ENABLE_AC"))
+					{
+//						if(isSineWave(arr, 900))
+//						{
+//							logger.information("channel[%d] 波形偵測成功", ADC_sensors[i].channel);
+							payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
+							payload << ",utc=+8 "; //狀態描述
+							for(uint m=0; m<220; m++)
+							{
+								payload << m << "=" << (pconfig->getBool("ADC.DO_CONVERT")?
+										Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+								if(m != 220-1)
+								{
+									payload << ",";
+								}
+							}
+							if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
+							{
+								for(uint m=0; m<220; m++)
+								{
+									*outputs[i] << (pconfig->getBool("ADC.DO_CONVERT")?
+											Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+									*outputs[i] << ",";
+								}
+								*outputs[i] << endl;
+							}
+							if(pconfig->getBool("ADC.INTO_REDIS"))
+							{
+								// 計算RMS
+								LocalDateTime now;
+								float square = 0;
+								for(uint m=0; m<430; m++)
+								{
+									square += pow((pconfig->getBool("ADC.DO_CONVERT")?
+											Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]), 2);
+								}
+								rb->set(pconfig->getString("DEVICE.ID") + "_ADC" +  NumberFormatter::format(ADC_sensors[i].channel),
+								NumberFormatter::format(sqrt(square/ (float)(430)), 2) + "," +
+								DateTimeFormatter::format(now, "%Y-%m-%d %H:%M:%S"));
+							}
+//						}
+//						else
+//						{
+//							logger.warning("channel[%d] 波形偵測失敗", ADC_sensors[i].channel);
+//						}
+					}
+				}
+				else if(ADC_sensors[i].type == DCCurrent || ADC_sensors[i].type == DC_25A) //DC
+				{
+					if(pconfig->getBool("ADC.ENABLE_DC"))
+					{
+						payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
+						payload << ",utc=+8 "; //狀態描述
+						for(uint m=0; m<200; m++)
+						{
+							payload << m << "=" << (pconfig->getBool("ADC.DO_CONVERT")?
+									Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+							if(m != 200-1)
+							{
+								payload << ",";
+							}
+						}
+						if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
+						{
+							for(uint m=0; m<200; m++)
+							{
+								*outputs[i] << (pconfig->getBool("ADC.DO_CONVERT")?
+										Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+								*outputs[i] << ",";
+							}
+							*outputs[i] << endl;
+						}
+					}
+				}
+				else if(ADC_sensors[i].type == thermistor)//溫度
+				{
+					if(pconfig->getBool("ADC.ENABLE_THERMISTER"))
+					{
+						payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
+						payload << ",utc=+8 "; //狀態描述
+						float mean = std::accumulate(arr.begin(), arr.end(), 0.0)/arr.size();	//計算平均
+						mean = (pconfig->getBool("ADC.DO_CONVERT") ?
+								Convet<float>(mean, ADC_sensors[i].type) : mean);
+						payload << "mean=" << mean;
+						if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
+						{
+							*outputs[i] << (pconfig->getBool("ADC.DO_CONVERT")?
+									Convet<int>(mean, ADC_sensors[i].type) : mean);
+							*outputs[i] << ",";
+							*outputs[i] << endl;
+						}
+					}
+				}
+				else if(ADC_sensors[i].type == Conductivity) //導電度計
+				{
+					if(pconfig->getBool("ADC.ENABLE_CONDUCTIVITY"))
+					{
+						payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
+						payload << ",utc=+8 "; //狀態描述
+						float mean = std::accumulate(arr.begin(), arr.end(), 0.0)/arr.size();	//計算平均
+						mean = pconfig->getBool("ADC.DO_CONVERT") ?
+								Convet<float>(mean, ADC_sensors[i].type) : mean;
+						payload << "mean=" << mean;
+						if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
+						{
+							*outputs[i] << pconfig->getBool("ADC.DO_CONVERT")?
+									Convet<int>(mean, ADC_sensors[i].type) : mean;
+							*outputs[i] << ",";
+							*outputs[i] << endl;
+						}
+					}
+				}
+				else if(ADC_sensors[i].type == Manual)
+				{
+					payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
+					payload << ",utc=+8 "; //狀態描述
+
+					for(uint m=0; m<1022; m++)
+					{
+						payload << m << "=" << (pconfig->getBool("ADC.DO_CONVERT")?
+								Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+						if(m != 1021)
+						{
+							payload << ",";
+						}
+					}
+					if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
+					{
+						for(uint m=0; m<1022; m++)
+						{
+							*outputs[i] << (pconfig->getBool("ADC.DO_CONVERT")?
+									Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+							*outputs[i] << ",";
+						}
+						*outputs[i] << endl;
+					}
+					if(pconfig->getBool("ADC.INTO_REDIS"))
+					{
+						// 計算RMS
+						LocalDateTime now;
+						float square = 0;
+						for(uint m=0; m<1022; m++)
+						{
+							square += pow((pconfig->getBool("ADC.DO_CONVERT")?
+									Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]), 2);
+						}
+						rb->set(pconfig->getString("DEVICE.ID") + "_ADC" +  NumberFormatter::format(ADC_sensors[i].channel),
+						NumberFormatter::format(sqrt(square/ (float)(1022)), 2) + "," +
+						DateTimeFormatter::format(now, "%Y-%m-%d %H:%M:%S"));
+					}
+				}
+				else if(ADC_sensors[i].type == pulse)
+				{
+					if(pconfig->getBool("ADC.ENABLE_PULSE"))
+					{
+						payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
+						payload << ",utc=+8 "; //狀態描述
+						for(uint m=0; m<990; m++)
+						{
+							payload << m << "=" << (pconfig->getBool("ADC.DO_CONVERT")?
+									Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+							if(m != 990 -1)
+							{
+								payload << ",";
+							}
+						}
+						if(pconfig->getBool("ADC.INTO_CSV")) // dump to csv
+						{
+							for(uint m=0; m < 990; m++)
+							{
+								*outputs[i] << (pconfig->getBool("ADC.DO_CONVERT")?
+										Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
+								*outputs[i] << ",";
+							}
+							*outputs[i] << endl;
+						}
+					}
+				}
+				payload << endl;
+				munmap(bram32_ptr, channel_bram_size);
+			}
+		}
+	//	cout << "done:" << payload.str()  <<  endl;
+		if(pconfig->getBool("ADC.INTO_DB") && payload.str().length()>0)
+		{
+			this->_ActiveMethod(payload.str());
+		}
+	}
+	catch (Exception& exc)
+	{
+		logger.error(exc.displayText());
+	}
+}
+
 
 bool BlockMemory::isSineWave(std::vector<float> arr, int threshold)
 {
@@ -1291,6 +1721,7 @@ bool BlockMemory::isSineWave(std::vector<float> arr, int threshold)
         	second_max = std::abs(data[i]);
         }
     }
+    cout << "max - second_max: " << max - second_max << endl;
     if((max - second_max) > threshold)
     {
     	return true;
@@ -1302,7 +1733,8 @@ bool BlockMemory::isWave(std::vector<float> arr, uint length, uint diff)
 {
 	float max = 0;
 	float min = 0;
-	int index_max, index_min;
+	int index_max = 0;
+	int index_min = 0;
 	for(uint i=0; i<length; i++)
 	{
 		if(arr[i] > max)
@@ -1458,6 +1890,7 @@ void BlockMemory::FDC()
 	}
 }
 */
+
 void BlockMemory::Upload(const std::string& payload)
 {
 	try
@@ -1505,7 +1938,7 @@ void BlockMemory::Upload_2() //單次上傳
 	}
 	catch (Poco::Exception& exc)
 	{
-		logger.error(exc.displayText());
+		logger.error("Upload:%s", exc.displayText());
 	}
 	return;
 }
@@ -1533,7 +1966,7 @@ int BlockMemory::getIntervalCollectDuration()
 void BlockMemory::IntervalCollect(Timer& timer)
 {
 	Timer shortTimeTimer(0, IntervalCollectTime);
-	shortTimeTimer.start(TimerCallback<BlockMemory>(*this, &BlockMemory::Collector));
+	shortTimeTimer.start(TimerCallback<BlockMemory>(*this, &BlockMemory::_Collector));
 	Thread::sleep(IntervalCollectDuration);
 	shortTimeTimer.stop();
 }

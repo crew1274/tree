@@ -67,6 +67,7 @@
 #include "Poco/PatternFormatter.h"
 #include "Poco/AutoPtr.h"
 
+#include "app/DatabaseBridge.h"
 #include "app/algo/SVM.h"
 #include "app/algo/Model.h"
 #include "app/algo/frequency.h"
@@ -114,7 +115,8 @@ typedef enum
 	DC_25A = 8,
 	DCCurrent = 9,
 	Conductivity = 10,
-	Manual = 11
+	Manual = 11,
+	pulse = 12,
 }CalculateType;
 
 typedef enum
@@ -147,6 +149,7 @@ struct adc_struct
 {
 	CalculateType type;
 	int channel;
+	std::string strategy;
 	json_feature feature;
 	float upper;
 	float lower;
@@ -167,6 +170,8 @@ class BlockMemory
         void LongTimeRecord(Timer& timer); //record ADC sensor
 
         void Collector(Timer& timer); //record ADC sensor
+
+        void _Collector(Timer& timer);
 
         void Upload(const std::string& payload);
 
@@ -237,6 +242,7 @@ class BlockMemory
     	//unsigned long long GetTimeStamp();
     	void fft(CArray& x);
     	bool isSineWave(std::vector<float> arr, int threshold);
+    	RedisBridge* rb;
 };
 //float ConvertADCValue(float value, CalculateType Type);
 #endif /* SRC_APP_BLOCKMEMORY_H_ */
