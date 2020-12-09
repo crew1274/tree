@@ -1180,6 +1180,7 @@ void BlockMemory::Collector(Timer& timer)
 				{
 					if(pconfig->getBool("ADC.ENABLE_AC"))
 					{
+						LocalDateTime now;
 						if(isSineWave(arr, 500))
 						{
 //							logger.information("channel[%d] 波形偵測成功", ADC_sensors[i].channel);
@@ -1207,7 +1208,7 @@ void BlockMemory::Collector(Timer& timer)
 							if(pconfig->getBool("ADC.INTO_REDIS"))
 							{
 								// 計算RMS
-								LocalDateTime now;
+
 								float square = 0;
 								for(uint m=0; m<430; m++)
 								{
@@ -1219,10 +1220,11 @@ void BlockMemory::Collector(Timer& timer)
 								DateTimeFormatter::format(now, "%Y-%m-%d %H:%M:%S"));
 							}
 						}
-//						else
-//						{
-//							logger.warning("channel[%d] 波形偵測失敗", ADC_sensors[i].channel);
-//						}
+						else
+						{
+							rb->set(pconfig->getString("DEVICE.ID") + "_ADC" +  NumberFormatter::format(ADC_sensors[i].channel),
+									"0," + DateTimeFormatter::format(now, "%Y-%m-%d %H:%M:%S"));
+						}
 					}
 				}
 				else if(ADC_sensors[i].type == DCCurrent || ADC_sensors[i].type == DC_25A) //DC
