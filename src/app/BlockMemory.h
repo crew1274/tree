@@ -117,6 +117,7 @@ typedef enum
 	Conductivity = 10,
 	Manual = 11,
 	pulse = 12,
+	inverter = 13,
 }CalculateType;
 
 typedef enum

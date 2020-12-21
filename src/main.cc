@@ -128,6 +128,7 @@
 
 #include "app/BlockMemory.h"
 #include "app/ModbusRun.h"
+#include "app/TecoRun.h"
 
 using namespace std;
 using namespace Poco;
@@ -330,7 +331,8 @@ protected:
 		Thread::sleep(config().getInt("PROGRAM.SLEEP", 0));
 		adc = new BlockMemory(&config());
 		adc->Load(config().getString("ADC.DESCRIPTION_FILE"));
-		mr = new ModbusRun(UART_PL4, &config());
+
+
 		nc = new NotificationCenter;
 		nc->addObserver(Observer<ADC, Notification>(*this, &ADC::handleReload));
 		ThreadPool::defaultPool().addCapacity(32); //Set max thread of ThreadPool for TCPServerParams
@@ -353,10 +355,19 @@ protected:
 		Logger& logger = Logger::get("Main");
 
 		Timer Modbus_Timer(0, config().getInt("MODBUS.DELAY_TIME", 10000));
-		if(config().getBool("MODBUS.START"))
+		if(config().getBool("MODBUS.START", false))
 		{
+			mr = new ModbusRun(UART_PL4, &config());
 			logger.information("啟動MODBUS COLLECT每%d秒執行一次", (config().getInt("MODBUS.DELAY_TIME", 10000)/1000));
 			Modbus_Timer.start(TimerCallback<ModbusRun>(*mr, &ModbusRun::Background));
+		}
+
+		Timer Teco_Timer(0, config().getInt("TECO.DELAY_TIME", 10000));
+		if(config().getBool("TECO.START", false))
+		{
+			tr = new TecoRun(UART_PL4, &config());
+			logger.information("啟動TECO COLLECT每%d秒執行一次", (config().getInt("TECO.DELAY_TIME", 10000)/1000));
+			Teco_Timer.start(TimerCallback<TecoRun>(*tr, &TecoRun::Background));
 		}
 
 		Timer COLLECT_Timer(0, config().getInt("COLLECT.DELAY_TIME", 10000));
@@ -506,6 +517,7 @@ private:
 	NotificationCenter *nc;
 	BlockMemory *adc;
 	ModbusRun *mr;
+	TecoRun *tr;
 	bool _helpRequested;
 };
 

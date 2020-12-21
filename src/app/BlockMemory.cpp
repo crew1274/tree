@@ -1227,6 +1227,22 @@ void BlockMemory::Collector(Timer& timer)
 						}
 					}
 				}
+				else if(ADC_sensors[i].type == inverter)
+				{
+					payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
+					payload << ",utc=+8 "; //狀態描述
+					if(pconfig->getBool("ADC.ENABLE_INVERTER"))
+					{
+						for(uint m=0; m<1022; m++)
+						{
+							payload << m << "=" << arr[m];
+							if(m != 1021)
+							{
+								payload << ",";
+							}
+						}
+					}
+				}
 				else if(ADC_sensors[i].type == DCCurrent || ADC_sensors[i].type == DC_25A) //DC
 				{
 					if(pconfig->getBool("ADC.ENABLE_DC"))

@@ -231,7 +231,7 @@ int Modbus::modbus_modbus_function_03(unsigned char modbus_slave_id,
 	int data_length = sizeof(data) / 2;
 	data_length = 2;
 	unsigned char Send_buffer[data_length + 6];
-	unsigned char Get_buffer[100];
+	unsigned char Get_buffer[512];
 	int len_o = sizeof(Get_buffer);
 	char *in = strdup(data);
 	char out[255];
@@ -291,6 +291,7 @@ int Modbus::modbus_modbus_function_03(unsigned char modbus_slave_id,
 	}
 	printf("\r\n");
 #endif
+	Uart::ClearBuffer();
 	Uart::Send((const char*) Send_buffer, sizeof(Send_buffer)); // sizeof +1
 
 	memset(Get_buffer, 0, sizeof(Get_buffer));
@@ -328,7 +329,7 @@ int Modbus::modbus_modbus_function_03(unsigned char modbus_slave_id,
 		}
 #endif
 
-		return 0;
+		return Get_buffer[2];
 	} else {
 		DBG("Modbus 0x03 Uart Get Error!\r\n");
 		memset(modbus_getdata, -1, sizeof(modbus_getdata));
