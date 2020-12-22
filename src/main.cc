@@ -366,7 +366,7 @@ protected:
 		if(config().getBool("TECO.START", false))
 		{
 			tr = new TecoRun(UART_PL4, &config());
-			logger.information("啟動TECO COLLECT每%d秒執行一次", (config().getInt("TECO.DELAY_TIME", 10000)/1000));
+			logger.information("啟動TECO COLLECT每%d秒執行一次", (config().getInt("TECO.DELAY_TIME")/1000));
 			Teco_Timer.start(TimerCallback<TecoRun>(*tr, &TecoRun::Background));
 		}
 

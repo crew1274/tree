@@ -14,30 +14,30 @@ logger(Logger::get("ModbusRun")),
 _ActiveMethod(this, &TecoRun::Upload)
 {
 	// TODO Auto-generated constructor stub
-	SetDevID(7);
+	SetDevID(15);
 	uint32_t geDataBack;
 	Read_FW_Version(geDataBack);
 	printf("FW VERSION: %d \n",(geDataBack));
-	Read_Core_Temp(geDataBack);
-	printf("%d /n",(geDataBack));
-	ReFleshOneCatch("X");
+//	Read_Core_Temp(geDataBack);
+//	printf("%d /n",(geDataBack));
+//	ReFleshOneCatch("X");
 //	std::vector<uint32_t> geDataBacks;
 //	ReadBufferData6000(geDataBacks);
 //	logger.information("%u ", geDataBacks[500]);
 //	std::string file_name = "teco_g.csv";
 //	csv_outputs = new std::ofstream (file_name.c_str(), std::ofstream::app);
-	std::vector<uint32_t> geDataBacks;
-	ReadBufferData6000(geDataBacks);
-	cout << "geDataBacks.size():" << geDataBacks.size() << endl;
-	std::vector<uint32_t> data;
-	for(uint i=500; i<= ( geDataBacks.size() < 1000? geDataBacks.size() : 1000); i++)
-	{
+//	std::vector<uint32_t> geDataBacks;
+//	ReadBufferData6000(geDataBacks);
+//	cout << "geDataBacks.size():" << geDataBacks.size() << endl;
+//	std::vector<uint32_t> data;
+//	for(uint i=500; i<= ( geDataBacks.size() < 1000? geDataBacks.size() : 1000); i++)
+//	{
 //		*csv_outputs << geDataBacks[i];
 //		*csv_outputs << ",";
-		data.push_back(geDataBacks[i]);
-	}
+//		data.push_back(geDataBacks[i]);
+//	}
 	//	*csv_outputs << endl;
-	isSineWave(data);
+//	isSineWave(data);
 }
 
 TecoRun::~TecoRun() {
@@ -54,38 +54,41 @@ void TecoRun::Background(Timer& timer)
 
 	payload << "TECO_X"; //目標資料表
 	payload << ",utc=+8 "; //狀態描述
-	for(uint m=0; m<1022; m++)
+	for(uint m=500; m<1000; m++)
 	{
-		payload << m << "=" << geDataBack[m];
-		if(m != 1021)
+		payload << m - 500 << "=" << geDataBack[m];
+		if(m != 999)
 		{
 			payload << ",";
 		}
 	}
 	payload << endl;
-
+	this->_ActiveMethod(payload.str());
+	payload.str("");
 	ReFleshOneCatch("Y");
 	ReadBufferData6000(geDataBack);
 	payload << "TECO_Y"; //目標資料表
 	payload << ",utc=+8 "; //狀態描述
-	for(uint m=0; m<1022; m++)
+	for(uint m=500; m<1000; m++)
 	{
-		payload << m << "=" << geDataBack[m];
-		if(m != 1021)
+		payload << m - 500 << "=" << geDataBack[m];
+		if(m != 999)
 		{
 			payload << ",";
 		}
 	}
 	payload << endl;
+	this->_ActiveMethod(payload.str());
+	payload.str("");
 
 	ReFleshOneCatch("Z");
 	ReadBufferData6000(geDataBack);
 	payload << "TECO_Z"; //目標資料表
 	payload << ",utc=+8 "; //狀態描述
-	for(uint m=0; m<1022; m++)
+	for(uint m=500; m<1000; m++)
 	{
-		payload << m << "=" << geDataBack[m];
-		if(m != 1021)
+		payload << m - 500 << "=" << geDataBack[m];
+		if(m != 999)
 		{
 			payload << ",";
 		}
