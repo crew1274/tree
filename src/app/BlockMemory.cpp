@@ -228,15 +228,15 @@ json_feature BlockMemory::ParesJsonFeature(CalculateType type, int channel, bool
 	return feature;
 }
 
-vector<vector<float> > BlockMemory::Parse2DFloatArray(Poco::JSON::Object::Ptr json_ptr, std::string key, bool verbose)
+std::vector<std::vector<float> > BlockMemory::Parse2DFloatArray(Poco::JSON::Object::Ptr json_ptr, std::string key, bool verbose)
 {
-	vector<vector<float> > temp_2d;
+	std::vector<std::vector<float> > temp_2d;
 	Poco::JSON::Array::Ptr array_ptr = json_ptr->getArray(key);
 	Poco::JSON::Array::Ptr array_ptr_2; //second dim of array
 	for(uint i=0; i< array_ptr->size(); i++)
 	{
 		array_ptr_2 = array_ptr->getArray(i);
-		vector<float> temp_1d;
+		std::vector<float> temp_1d;
 		for(uint k=0; k<array_ptr_2->size(); k++)
 		{
 			temp_1d.push_back(array_ptr_2->get(k).convert<float>());
@@ -246,9 +246,9 @@ vector<vector<float> > BlockMemory::Parse2DFloatArray(Poco::JSON::Object::Ptr js
 	return temp_2d;
 }
 
-vector<float> BlockMemory::Parse1DFloatArray(Poco::JSON::Object::Ptr json_ptr, std::string key, bool verbose)
+std::vector<float> BlockMemory::Parse1DFloatArray(Poco::JSON::Object::Ptr json_ptr, std::string key, bool verbose)
 {
-	vector<float> temp_1d;
+	std::vector<float> temp_1d;
 	Poco::JSON::Array::Ptr array_ptr = json_ptr->getArray(key);
 	for(uint i=0; i< array_ptr->size(); i++)
 	{
@@ -582,9 +582,9 @@ void BlockMemory::PHM(Timer& timer)
 
 
 		int n = arr.size();
-		vector<double> freqBand = dftFreqBand(n, 1./sampling_rate);
+		std::vector<double> freqBand = dftFreqBand(n, 1./sampling_rate);
 		// Get FFT amplitude
-		vector<double> amplitude = fftAmplitude(arr);
+		std::vector<double> amplitude = fftAmplitude(arr);
 		// Get overall vibration value
 		double oa = calOverAllValue(freqBand, amplitude, 10, 1000);
 		cout << "OA value: " << oa << endl;
@@ -1470,7 +1470,8 @@ void BlockMemory::_Collector(Timer& timer)
 					}
 					counter--;
 				}
-
+				cout << i << endl;
+				cout << ADC_sensors[i].type << endl;
 				if(ADC_sensors[i].type == axis)//震動
 				{
 					if(pconfig->getBool("ADC.ENABLE_AXIS"))
@@ -1503,6 +1504,7 @@ void BlockMemory::_Collector(Timer& timer)
 						ADC_sensors[i].type == current_15A || ADC_sensors[i].type == current_20A ||
 						ADC_sensors[i].type == current_30A || ADC_sensors[i].type == current_60A ) //交流電
 				{
+					cout << "1" << endl;
 					if(pconfig->getBool("ADC.ENABLE_AC"))
 					{
 //						if(isSineWave(arr, 900))

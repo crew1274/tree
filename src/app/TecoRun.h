@@ -68,6 +68,7 @@
 #include "Poco/AutoPtr.h"
 
 #include "hal/TecoRS485.h"
+#include "DatabaseBridge.h"
 #include "../utility.h"
 #include "../def.h"
 
@@ -83,18 +84,22 @@ typedef std::valarray<Complex> CArray;
 class TecoRun  : private TecoRS485
 {
 public:
-	TecoRun(const char *uart_device, LayeredConfiguration *_config);
+	TecoRun(const char *uart_device, int _id, LayeredConfiguration *_config, std::string _table_name);
 	virtual ~TecoRun();
 	void Background(Timer& timer);
 	void Upload(const std::string& payload);
 	bool isSineWave(std::vector<uint32_t> arr);
 	void fft(CArray& x);
+	void Test();
 private:
+	int id;
 	LayeredConfiguration *pconfig; // configuration
 	Logger& logger;
 	ActiveMethod<void, std::string, TecoRun> _ActiveMethod;
 	TecoVibrationStruct dataContainer;
 	ofstream* csv_outputs;
+	std::string table_name;
+	InfluxBridge* ib;
 };
 
 #endif /* SRC_APP_TECORUN_H_ */

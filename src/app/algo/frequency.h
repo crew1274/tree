@@ -16,21 +16,21 @@
 
 using namespace std;
 
-double freqFromFFT(vector<double> data, double sampling_rate);
-vector<double> dftFreqBand(int n, double d);
-vector<double> fftAmplitude(vector<double> data);
-void rfft1d(vector<double> data, fftw_complex* y);
+double freqFromFFT(std::vector<double> data, double sampling_rate);
+std::vector<double> dftFreqBand(int n, double d);
+std::vector<double> fftAmplitude(std::vector<double> data);
+void rfft1d(std::vector<double> data, fftw_complex* y);
 void ifft1d(fftw_complex* x, fftw_complex* y, int n);
 fftw_complex* multiply(fftw_complex * A, fftw_complex * B, int n);
-vector<double> fft_convolve(vector<double>& a, vector<double>& b);
-vector<double> correlate(vector<double> a, vector<double> b);
-void rollVector(vector<double> &a, int shift);
-double vectorMean(vector<double> v);
-double vectorStd(vector<double> v);
-void normVector(vector<double> &a, double mean, double std);
-double percentile(vector<double> vectorIn, double percent);
-vector<double> difference(vector<double> v1, vector<double> v2);
-vector<double> vectorAbs(vector<double> v);
-vector<double> nthDiff(vector<double> v, int n);
-double roughness(vector<double> v);
+std::vector<double> fft_convolve(std::vector<double>& a, std::vector<double>& b);
+std::vector<double> correlate(std::vector<double> a, std::vector<double> b);
+void rollVector(std::vector<double> &a, int shift);
+double vectorMean(std::vector<double> v);
+double vectorStd(std::vector<double> v);
+void normVector(std::vector<double> &a, double mean, double std);
+double percentile(std::vector<double> vectorIn, double percent);
+std::vector<double> difference(std::vector<double> v1, std::vector<double> v2);
+std::vector<double> vectorAbs(std::vector<double> v);
+std::vector<double> nthDiff(std::vector<double> v, int n);
+double roughness(std::vector<double> v);
 # endif

@@ -25,7 +25,7 @@ public:
 	static bool STD_Filter_V2(std::vector<float> a, float threshold, int n_segs);
 	static bool STD_Filter_V2(std::vector<float> arr, float threshold);
 	int* Histogram(float a[], int a_size, int bins, float range[2]);
-	static std::vector<float> Histogram_V2(vector<float> a, int bins, float range_down, float range_up);
+	static std::vector<float> Histogram_V2(std::vector<float> a, int bins, float range_down, float range_up);
 	//float* Histogram_V3(float_2046 a, int bins, float range_down, float range_up);
 };
 

@@ -6,6 +6,113 @@
  */
 
 #include <app/DatabaseBridge.h>
+
+//----------------------------------------------------------------------------------------------//
+InfluxBridge::InfluxBridge(std::string _host, int _port, std::string _token):
+logger(Logger::get("ArangoBridge")), token(_token)
+{
+	session = new HTTPClientSession( _host, _port); //建立HTTP session
+}
+
+InfluxBridge::~InfluxBridge(){}
+
+bool InfluxBridge::Write(std::string org, std::string bucket, std::string payload)
+{
+	std::string path = "/api/v2/write?org=" + org + "&bucket=" + bucket + "&precision=us";
+	HTTPRequest request(HTTPRequest::HTTP_POST, path, HTTPMessage::HTTP_1_1);
+	request.add("Authorization","Token " +  token);
+//	request.setContentType("application/x-www-form-urlencoded");
+	request.setContentLength(payload.length());
+
+	std::ostream& BodyOstream = session->sendRequest(request); // sends request, returns open stream
+	BodyOstream << payload;
+	HTTPResponse response;
+	istream& rs = session->receiveResponse(response);
+	string s((istreambuf_iterator<char>(rs)), istreambuf_iterator<char>());
+	cout << s << endl;
+	return true;
+}
+
+
+//----------------------------------------------------------------------------------------------//
+ArangoBridge::ArangoBridge(std::string _host, int _port, std::string _database):
+logger(Logger::get("ArangoBridge")), token(""), database(_database), activeFailover(false)
+{
+	session = new HTTPClientSession(_host, _port); //建立HTTP session
+	TokenTimer = new Timer(0, 1000 * 60 * 5); //初始化Timer，每5分鐘更新一次token
+	TokenTimer->start(TimerCallback<ArangoBridge>(*this, &ArangoBridge::getToken));
+//	try /*取得clusters*/
+//	{
+//		JSON::Object EmptyObject;
+//		JSON::Object::Ptr cluster = this->Bridge(HTTPRequest::HTTP_GET, "/_api/cluster/endpoints", EmptyObject);
+//		JSON::Array::Ptr clusters = cluster->getArray("endpoints");
+//		for(uint i=0; i<clusters->size(); i++)
+//		{
+//			URI node_path(clusters->getObject(i)->get("endpoint").convert<std::string>());
+//			cluster_nodes.push_back(node_path);
+//		}
+//		logger.information("啟動容錯轉移");
+//		activeFailover = true;
+//		_i = 0;
+//	}
+//    catch (Exception &e)
+//    {
+//        logger.error(e.displayText());
+//    }
+}
+
+ArangoBridge::~ArangoBridge(){}
+
+void ArangoBridge::FailOver(std::string _host, int _port)
+{
+	session = new HTTPClientSession(_host, _port); //重新建立HTTP session
+	logger.information("重新建立HTTP session: %s:%d", _host, _port);
+}
+
+JSON::Object::Ptr ArangoBridge::Bridge(std::string method, std::string path, JSON::Object paylod)
+{
+	HTTPRequest request(method, path, HTTPMessage::HTTP_1_1);
+	request.add("Authorization", token);
+	request.setContentType("application/json");
+	if(method != "HTTP_POST")
+	{
+		std::stringstream ss;
+		paylod.stringify(ss);
+		request.setContentLength(ss.str().size());
+	}
+	std::ostream& BodyOstream = session->sendRequest(request); // sends request, returns open stream
+	paylod.stringify(BodyOstream);
+
+	HTTPResponse response;
+	istream& rs = session->receiveResponse(response);
+	string s((istreambuf_iterator<char>(rs)), istreambuf_iterator<char>());
+	JSON::Parser parser;
+	return parser.parse(s).extract<JSON::Object::Ptr>();
+}
+
+void ArangoBridge::getToken(Timer& timer)
+{
+	try
+	{
+		JSON::Object paylod;
+		paylod.set("username", "root");
+		paylod.set("password", "root");
+		JSON::Object::Ptr ret = this->Bridge(HTTPRequest::HTTP_POST, "/_open/auth", paylod);
+		token = "Bearer " + ret->get("jwt").convert<std::string>();
+	}
+    catch (Exception &e)
+    {
+        logger.error(e.displayText());
+        if(this->activeFailover)
+        {
+        	_i != cluster_nodes.size() - 1 ? _i ++ : _i = 0;
+        	this->FailOver( cluster_nodes[_i].getHost(), cluster_nodes[_i].getPort()) ;
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------------//
+
 //-----------------------------------------Redis--------------------------------------------------//
 RedisBridge::RedisBridge(std::string host, int port): logger(Logger::get("RedisBridge")), _host(host), _port(port)
 {

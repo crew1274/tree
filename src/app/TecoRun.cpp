@@ -7,14 +7,16 @@
 
 #include <app/TecoRun.h>
 
-TecoRun::TecoRun(const char *uart_device, LayeredConfiguration *_config):
+TecoRun::TecoRun(const char *uart_device, int _id, LayeredConfiguration *_config, std::string _table_name):
 TecoRS485(uart_device),
+id(_id),
 pconfig(_config),
 logger(Logger::get("ModbusRun")),
-_ActiveMethod(this, &TecoRun::Upload)
+_ActiveMethod(this, &TecoRun::Upload),
+table_name(_table_name)
 {
 	// TODO Auto-generated constructor stub
-	SetDevID(15);
+	SetDevID(id);
 	uint32_t geDataBack;
 	Read_FW_Version(geDataBack);
 	printf("FW VERSION: %d \n",(geDataBack));
@@ -26,7 +28,7 @@ _ActiveMethod(this, &TecoRun::Upload)
 //	logger.information("%u ", geDataBacks[500]);
 //	std::string file_name = "teco_g.csv";
 //	csv_outputs = new std::ofstream (file_name.c_str(), std::ofstream::app);
-//	std::vector<uint32_t> geDataBacks;
+//
 //	ReadBufferData6000(geDataBacks);
 //	cout << "geDataBacks.size():" << geDataBacks.size() << endl;
 //	std::vector<uint32_t> data;
@@ -36,12 +38,64 @@ _ActiveMethod(this, &TecoRun::Upload)
 //		*csv_outputs << ",";
 //		data.push_back(geDataBacks[i]);
 //	}
-	//	*csv_outputs << endl;
+//		*csv_outputs << endl;
 //	isSineWave(data);
+	ib = new InfluxBridge(pconfig->getString("INFLUXDB2_DATABASE.HOST"),
+			pconfig->getInt("INFLUXDB2_DATABASE.PORT"), "NLh1unesRWF3KEUZp86LCKA5oB_-vM3-zhVJb7V3WB_HlK-uj6kCShHRQpjB6FUV_0Hpe3Y0Jx6HDmKjPVBLsQ==");
 }
 
 TecoRun::~TecoRun() {
 	// TODO Auto-generated destructor stub
+}
+
+void TecoRun::Test()
+{
+	std::vector<uint32_t> geDataBack;
+	std::stringstream payload;
+
+	ReFleshOneCatch("X");
+	ReadBufferData6000(geDataBack);
+	LocalDateTime nowX;
+	for(uint m=500; m<1000; m++)
+	{
+		payload << table_name;
+		payload << ",AXIS=X "; //狀態描述
+		payload << "value=" << geDataBack[m];
+		payload << " " << nowX.utc().timestamp().epochMicroseconds() - (1000 - m);
+		payload << " \n";
+	}
+	ib->Write(pconfig->getString("INFLUXDB2_DATABASE.ORG"), pconfig->getString("INFLUXDB2_DATABASE.BUCKET"), payload.str());
+	payload.str("");
+
+
+	ReFleshOneCatch("Y");
+	ReadBufferData6000(geDataBack);
+	LocalDateTime nowY;
+	for(uint m=500; m<1000; m++)
+	{
+		payload << table_name;
+		payload << ",AXIS=Y "; //狀態描述
+		payload << "value=" << geDataBack[m];
+		payload << " " << nowY.utc().timestamp().epochMicroseconds() - (1000 - m);
+		payload << " \n";
+	}
+
+	ib->Write(pconfig->getString("INFLUXDB2_DATABASE.ORG"), pconfig->getString("INFLUXDB2_DATABASE.BUCKET"), payload.str());
+	payload.str("");
+
+	ReFleshOneCatch("Z");
+	ReadBufferData6000(geDataBack);
+	LocalDateTime nowZ;
+	for(uint m=500; m<1000; m++)
+	{
+		payload << table_name;
+		payload << ",AXIS=Z "; //狀態描述
+		payload << "value=" << geDataBack[m];
+		payload << " " << nowZ.utc().timestamp().epochMicroseconds() - (1000 - m);
+		payload << " \n";
+	}
+	ib->Write(pconfig->getString("INFLUXDB2_DATABASE.ORG"), pconfig->getString("INFLUXDB2_DATABASE.BUCKET"), payload.str());
+	payload.str("");
 }
 
 void TecoRun::Background(Timer& timer)
@@ -51,51 +105,47 @@ void TecoRun::Background(Timer& timer)
 
 	ReFleshOneCatch("X");
 	ReadBufferData6000(geDataBack);
-
-	payload << "TECO_X"; //目標資料表
-	payload << ",utc=+8 "; //狀態描述
+	LocalDateTime nowX;
 	for(uint m=500; m<1000; m++)
 	{
-		payload << m - 500 << "=" << geDataBack[m];
-		if(m != 999)
-		{
-			payload << ",";
-		}
+		payload << table_name;
+		payload << ",AXIS=X "; //狀態描述
+		payload << "value=" << geDataBack[m];
+		payload << " " << nowX.utc().timestamp().epochMicroseconds() - (1000 - m);
+		payload << " \n";
 	}
-	payload << endl;
-	this->_ActiveMethod(payload.str());
+	ib->Write(pconfig->getString("INFLUXDB2_DATABASE.ORG"), pconfig->getString("INFLUXDB2_DATABASE.BUCKET"), payload.str());
 	payload.str("");
+
+
 	ReFleshOneCatch("Y");
 	ReadBufferData6000(geDataBack);
-	payload << "TECO_Y"; //目標資料表
-	payload << ",utc=+8 "; //狀態描述
+	LocalDateTime nowY;
 	for(uint m=500; m<1000; m++)
 	{
-		payload << m - 500 << "=" << geDataBack[m];
-		if(m != 999)
-		{
-			payload << ",";
-		}
+		payload << table_name;
+		payload << ",AXIS=Y "; //狀態描述
+		payload << "value=" << geDataBack[m];
+		payload << " " << nowY.utc().timestamp().epochMicroseconds() - (1000 - m);
+		payload << " \n";
 	}
-	payload << endl;
-	this->_ActiveMethod(payload.str());
+
+	ib->Write(pconfig->getString("INFLUXDB2_DATABASE.ORG"), pconfig->getString("INFLUXDB2_DATABASE.BUCKET"), payload.str());
 	payload.str("");
 
 	ReFleshOneCatch("Z");
 	ReadBufferData6000(geDataBack);
-	payload << "TECO_Z"; //目標資料表
-	payload << ",utc=+8 "; //狀態描述
+	LocalDateTime nowZ;
 	for(uint m=500; m<1000; m++)
 	{
-		payload << m - 500 << "=" << geDataBack[m];
-		if(m != 999)
-		{
-			payload << ",";
-		}
+		payload << table_name;
+		payload << ",AXIS=Z "; //狀態描述
+		payload << "value=" << geDataBack[m];
+		payload << " " << nowZ.utc().timestamp().epochMicroseconds() - (1000 - m);
+		payload << " \n";
 	}
-	payload << endl;
-	this->_ActiveMethod(payload.str());
-
+	ib->Write(pconfig->getString("INFLUXDB2_DATABASE.ORG"), pconfig->getString("INFLUXDB2_DATABASE.BUCKET"), payload.str());
+	payload.str("");
 
 //	for(uint i=500; i< ( geDataBack.size() < 1000? geDataBack.size() : 1000); i++)
 //	{
