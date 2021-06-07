@@ -336,8 +336,25 @@ protected:
 		nc->addObserver(Observer<ADC, Notification>(*this, &ADC::handleReload));
 		ThreadPool::defaultPool().addCapacity(32); //Set max threa d of ThreadPool for TCPServerParams
 
-//		ib = new InfluxBridge("10.11.0.156", 8087, "NLh1unesRWF3KEUZp86LCKA5oB_-vM3-zhVJb7V3WB_HlK-uj6kCShHRQpjB6FUV_0Hpe3Y0Jx6HDmKjPVBLsQ==");
-//		ib->Write("CHPT", "SYSTEM", "mem,host=host1 used_percent=26.6");
+		if(config().getBool("TECO.START"))
+		{
+			// 切割config檔
+			StringTokenizer path_array(config().getString("TECO.PATH_ARRAY"), ",", StringTokenizer::TOK_TRIM);
+			StringTokenizer id_array(config().getString("TECO.ID_ARRAY"), ",", StringTokenizer::TOK_TRIM);
+			StringTokenizer delay_array(config().getString("TECO.DELAY_TIME"), ",", StringTokenizer::TOK_TRIM);
+			for(uint i=0; i<config().getUInt("TECO.NUMBER_OF_OBJECT"); i++)
+			{
+				trs.push_back(  std::make_pair(
+						new TecoRun(path_array[i].c_str(), NumberParser::parse(id_array[i]), &config(), path_array[i]),
+						new	Timer(0, NumberParser::parse(delay_array[i]))
+				));
+			}
+			for(uint i=0; i<config().getUInt("TECO.NUMBER_OF_OBJECT"); i++)
+			{
+				logger.information("啟動TECO COLLECT每%d秒執行一次", (NumberParser::parse(delay_array[i])/1000));
+				trs[i].second->start(TimerCallback<TecoRun>(*trs[i].first, &TecoRun::Background));
+			}
+		}
 	}
 
 	void uninitialize()
@@ -364,18 +381,18 @@ protected:
 			Modbus_Timer.start(TimerCallback<ModbusRun>(*mr, &ModbusRun::Background));
 		}
 
-		Timer Teco_Timer(0, config().getInt("TECO.DELAY_TIME", 10000));
-		Timer Teco2_Timer(0, config().getInt("TECO.DELAY_TIME", 10000));
-		if(config().getBool("TECO.START", false))
-		{
-			tr = new TecoRun(UART_PL4, 15, &config(), "UART_PL4");
-			logger.information("啟動TECO COLLECT每%d秒執行一次", (config().getInt("TECO.DELAY_TIME")/1000));
-			Teco_Timer.start(TimerCallback<TecoRun>(*tr, &TecoRun::Background));
-
-			tr_2 = new TecoRun(UART_PL5, 15, &config(), "UART_PL5");
-			logger.information("啟動TECO COLLECT每%d秒執行一次", (config().getInt("TECO.DELAY_TIME")/1000));
-			Teco2_Timer.start(TimerCallback<TecoRun>(*tr_2, &TecoRun::Background));
-		}
+//		Timer Teco_Timer(0, config().getInt("TECO.DELAY_TIME", 10000));
+//		Timer Teco2_Timer(0, config().getInt("TECO.DELAY_TIME", 10000));
+//		if(config().getBool("TECO.START", false))
+//		{
+//			tr = new TecoRun(UART_PL4, 15, &config(), "UART_PL4");
+//			logger.information("啟動TECO COLLECT每%d秒執行一次", (config().getInt("TECO.DELAY_TIME")/1000));
+//			Teco_Timer.start(TimerCallback<TecoRun>(*tr, &TecoRun::Background));
+//
+//			tr_2 = new TecoRun(UART_PL5, 15, &config(), "UART_PL5");
+//			logger.information("啟動TECO COLLECT每%d秒執行一次", (config().getInt("TECO.DELAY_TIME")/1000));
+//			Teco2_Timer.start(TimerCallback<TecoRun>(*tr_2, &TecoRun::Background));
+//		}
 
 		Timer COLLECT_Timer(0, config().getInt("COLLECT.DELAY_TIME", 10000));
 		Timer IntervalCollect_Timer(0, config().getInt("INTERVAL_COLLECT.DELAY_TIME", 10000));
@@ -515,7 +532,7 @@ protected:
 				if (!fullKey.empty()) fullKey += '.';
 				fullKey.append(*it);
 				printProperties(fullKey);
-			}
+ 			}
 		}
 	}
 
@@ -524,6 +541,7 @@ private:
 	NotificationCenter *nc;
 	BlockMemory *adc;
 	ModbusRun *mr;
+	std::vector< std::pair<TecoRun*, Timer*> > trs;
 	TecoRun *tr;
 	TecoRun *tr_2;
 	InfluxBridge* ib;

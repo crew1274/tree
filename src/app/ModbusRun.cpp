@@ -50,25 +50,30 @@ void ModbusRun::Background(Timer& timer)
 
 		this->_ActiveMethod(payload.str());
 	}
+	ib = new InfluxBridge("10.11.0.156", 8087,
+			"Cs_-xF75vIQ0cz7ReG94s_qL8bRJrWkrKclpGyMmWAlVLex-vF1DmQQyswWgJwjeA8XpQNdxbBZvxX6boNgRYw==");
 }
 
 void ModbusRun::Upload(const std::string& payload)
 {
 	try
 	{
-		URI target;
-		target.setScheme("http");
-		target.setHost(pconfig->getString("DATABASE.HOST", "10.11.0.156"));
-		target.setPort(8086);
-		target.setPath("write");
-		target.addQueryParameter("db", pconfig->getString("DATABASE.DB_NAME")); //選擇db
-
-		HTTPClientSession session(target.getHost(), target.getPort());
-		HTTPRequest request(Net::HTTPRequest::HTTP_POST, target.toString(), Net::HTTPMessage::HTTP_1_1);
-		request.setContentType("application/x-www-form-urlencoded");
-		request.setContentLength(payload.length());
-		std::ostream& BodyOstream = session.sendRequest(request); // sends request, returns open stream
-		BodyOstream << payload;  // sends the body
+		ib->Write(pconfig->getString("INFLUXDB2_DATABASE.ORG"),
+				pconfig->getString("INFLUXDB2_DATABASE.BUCKET"),
+				payload);
+//		URI target;
+//		target.setScheme("http");
+//		target.setHost(pconfig->getString("DATABASE.HOST", "10.11.0.156"));
+//		target.setPort(8087);
+//		target.setPath("write");
+//		target.addQueryParameter("db", pconfig->getString("DATABASE.DB_NAME")); //選擇db
+//
+//		HTTPClientSession session(target.getHost(), target.getPort());
+//		HTTPRequest request(Net::HTTPRequest::HTTP_POST, target.toString(), Net::HTTPMessage::HTTP_1_1);
+//		request.setContentType("application/x-www-form-urlencoded");
+//		request.setContentLength(payload.length());
+//		std::ostream& BodyOstream = session.sendRequest(request); // sends request, returns open stream
+//		BodyOstream << payload;  // sends the body
 	}
 	catch (Exception& exc)
 	{

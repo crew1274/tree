@@ -25,6 +25,8 @@ runnableUpload(*this, &BlockMemory::Upload_2)
 	{
 		rb = new RedisBridge("127.0.0.1", 6379);
 	}
+	ib = new InfluxBridge("10.11.0.156", 8087,
+			"Cs_-xF75vIQ0cz7ReG94s_qL8bRJrWkrKclpGyMmWAlVLex-vF1DmQQyswWgJwjeA8XpQNdxbBZvxX6boNgRYw==");
 }
 
 BlockMemory::~BlockMemory(){}
@@ -55,7 +57,7 @@ void BlockMemory::Load(std::string fileName)
 	{
 		logger.fatal("%s do not exist!", filePath.toString());
 	}
-	logger.trace("Total of %z bytes", ostr.str().size());
+	logger.information("Total of %z bytes", ostr.str().size());
 
 	Parser str_parser;
 	Dynamic::Var DynamicResult = str_parser.parse(ostr.str());
@@ -1470,8 +1472,6 @@ void BlockMemory::_Collector(Timer& timer)
 					}
 					counter--;
 				}
-				cout << i << endl;
-				cout << ADC_sensors[i].type << endl;
 				if(ADC_sensors[i].type == axis)//震動
 				{
 					if(pconfig->getBool("ADC.ENABLE_AXIS"))
@@ -1491,7 +1491,7 @@ void BlockMemory::_Collector(Timer& timer)
 						{
 							for(uint m=0; m<(channel_size-2); m++)
 							{
-								*outputs[i] << (pconfig->getBool("ADC.DO_CONVERT")?
+								*outputs[i] << (pconfig->getBool("ADC.DO_CONVERT") ?
 										Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
 								*outputs[i] << ",";
 							}
@@ -1504,11 +1504,10 @@ void BlockMemory::_Collector(Timer& timer)
 						ADC_sensors[i].type == current_15A || ADC_sensors[i].type == current_20A ||
 						ADC_sensors[i].type == current_30A || ADC_sensors[i].type == current_60A ) //交流電
 				{
-					cout << "1" << endl;
 					if(pconfig->getBool("ADC.ENABLE_AC"))
 					{
-//						if(isSineWave(arr, 900))
-//						{
+						if(isSineWave(arr, 900))
+						{
 //							logger.information("channel[%d] 波形偵測成功", ADC_sensors[i].channel);
 							payload << "ADC_" << ADC_sensors[i].channel; //目標資料表
 							payload << ",utc=+8 "; //狀態描述
@@ -1545,7 +1544,7 @@ void BlockMemory::_Collector(Timer& timer)
 								NumberFormatter::format(sqrt(square/ (float)(430)), 2) + "," +
 								DateTimeFormatter::format(now, "%Y-%m-%d %H:%M:%S"));
 							}
-//						}
+						}
 //						else
 //						{
 //							logger.warning("channel[%d] 波形偵測失敗", ADC_sensors[i].channel);
@@ -1624,7 +1623,7 @@ void BlockMemory::_Collector(Timer& timer)
 
 					for(uint m=0; m<1022; m++)
 					{
-						payload << m << "=" << (pconfig->getBool("ADC.DO_CONVERT")?
+						payload << m << "=" << (pconfig->getBool("ADC.DO_CONVERT") ?
 								Convet<int>(arr[m], ADC_sensors[i].type) : arr[m]);
 						if(m != 1021)
 						{
@@ -1915,23 +1914,27 @@ void BlockMemory::Upload(const std::string& payload)
 {
 	try
 	{
-		URI target;
-		target.setScheme("http");
-		target.setHost(pconfig->getString("DATABASE.HOST", "10.11.0.156"));
-		target.setPort(8086);
-		target.setPath("write");
-		target.addQueryParameter("db", pconfig->getString("DATABASE.DB_NAME")); //選擇db
+		ib->Write(pconfig->getString("INFLUXDB2_DATABASE.ORG"),
+				pconfig->getString("INFLUXDB2_DATABASE.BUCKET"),
+				payload);
 
-		HTTPClientSession session(target.getHost(), target.getPort());
-		HTTPRequest request(Net::HTTPRequest::HTTP_POST, target.toString(), Net::HTTPMessage::HTTP_1_1);
-		request.setContentType("application/x-www-form-urlencoded");
-		request.setContentLength(payload.length());
-		std::ostream& BodyOstream = session.sendRequest(request); // sends request, returns open stream
-		BodyOstream << payload;  // sends the body
+//		URI target;
+//		target.setScheme("http");
+//		target.setHost(pconfig->getString("DATABASE.HOST", "10.11.0.156"));
+//		target.setPort(8086);
+//		target.setPath("write");
+//		target.addQueryParameter("db", pconfig->getString("DATABASE.DB_NAME")); //選擇db
+//
+//		HTTPClientSession session(target.getHost(), target.getPort());
+//		HTTPRequest request(Net::HTTPRequest::HTTP_POST, target.toString(), Net::HTTPMessage::HTTP_1_1);
+//		request.setContentType("application/x-www-form-urlencoded");
+//		request.setContentLength(payload.length());
+//		std::ostream& BodyOstream = session.sendRequest(request); // sends request, returns open stream
+//		BodyOstream << payload;  // sends the body
 	}
 	catch (Exception& exc)
 	{
-		logger.error(exc.displayText());
+		logger.error("Upload: %s", exc.displayText());
 	}
 }
 
@@ -1948,15 +1951,15 @@ void BlockMemory::Upload_2() //單次上傳
 		target.setPath("write");
 		target.addQueryParameter("db", pconfig->getString("ADC.SERVER_DB", "test")); //選擇db
 
-		Poco::Net::HTTPClientSession session(target.getHost(), target.getPort());
-		Poco::Net::HTTPRequest request(Poco::Net::HTTPRequest::HTTP_POST, target.toString(), Poco::Net::HTTPMessage::HTTP_1_1);
+		HTTPClientSession session(target.getHost(), target.getPort());
+		HTTPRequest request(HTTPRequest::HTTP_POST, target.toString(), HTTPMessage::HTTP_1_1);
 		request.setContentType("application/x-www-form-urlencoded");
 
 		request.setContentLength(temp.length());
 		std::ostream& BodyOstream = session.sendRequest(request); // sends request, returns open stream
 		BodyOstream << temp;  // sends the body
 	}
-	catch (Poco::Exception& exc)
+	catch (Exception& exc)
 	{
 		logger.error("Upload:%s", exc.displayText());
 	}

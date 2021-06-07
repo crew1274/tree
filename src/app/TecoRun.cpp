@@ -52,13 +52,13 @@ void TecoRun::Test()
 {
 	std::vector<uint32_t> geDataBack;
 	std::stringstream payload;
-
+	SetDevID(id);
 	ReFleshOneCatch("X");
 	ReadBufferData6000(geDataBack);
 	LocalDateTime nowX;
 	for(uint m=500; m<1000; m++)
 	{
-		payload << table_name;
+		payload << table_name << "-" << id;
 		payload << ",AXIS=X "; //狀態描述
 		payload << "value=" << geDataBack[m];
 		payload << " " << nowX.utc().timestamp().epochMicroseconds() - (1000 - m);
@@ -73,7 +73,7 @@ void TecoRun::Test()
 	LocalDateTime nowY;
 	for(uint m=500; m<1000; m++)
 	{
-		payload << table_name;
+		payload << table_name << "-" << id;
 		payload << ",AXIS=Y "; //狀態描述
 		payload << "value=" << geDataBack[m];
 		payload << " " << nowY.utc().timestamp().epochMicroseconds() - (1000 - m);
@@ -88,7 +88,7 @@ void TecoRun::Test()
 	LocalDateTime nowZ;
 	for(uint m=500; m<1000; m++)
 	{
-		payload << table_name;
+		payload << table_name << "-" << id;
 		payload << ",AXIS=Z "; //狀態描述
 		payload << "value=" << geDataBack[m];
 		payload << " " << nowZ.utc().timestamp().epochMicroseconds() - (1000 - m);
@@ -108,7 +108,7 @@ void TecoRun::Background(Timer& timer)
 	LocalDateTime nowX;
 	for(uint m=500; m<1000; m++)
 	{
-		payload << table_name;
+		payload << table_name << "-" << id;
 		payload << ",AXIS=X "; //狀態描述
 		payload << "value=" << geDataBack[m];
 		payload << " " << nowX.utc().timestamp().epochMicroseconds() - (1000 - m);
@@ -123,7 +123,7 @@ void TecoRun::Background(Timer& timer)
 	LocalDateTime nowY;
 	for(uint m=500; m<1000; m++)
 	{
-		payload << table_name;
+		payload << table_name << "-" << id;
 		payload << ",AXIS=Y "; //狀態描述
 		payload << "value=" << geDataBack[m];
 		payload << " " << nowY.utc().timestamp().epochMicroseconds() - (1000 - m);
@@ -138,7 +138,7 @@ void TecoRun::Background(Timer& timer)
 	LocalDateTime nowZ;
 	for(uint m=500; m<1000; m++)
 	{
-		payload << table_name;
+		payload << table_name << "-" << id;
 		payload << ",AXIS=Z "; //狀態描述
 		payload << "value=" << geDataBack[m];
 		payload << " " << nowZ.utc().timestamp().epochMicroseconds() - (1000 - m);
@@ -146,7 +146,6 @@ void TecoRun::Background(Timer& timer)
 	}
 	ib->Write(pconfig->getString("INFLUXDB2_DATABASE.ORG"), pconfig->getString("INFLUXDB2_DATABASE.BUCKET"), payload.str());
 	payload.str("");
-
 //	for(uint i=500; i< ( geDataBack.size() < 1000? geDataBack.size() : 1000); i++)
 //	{
 //		*csv_outputs << geDataBack[i];
@@ -220,7 +219,7 @@ void TecoRun::fft(CArray& x)
     for (size_t k = 0; k < N/2; ++k)
     {
         Complex t = std::polar(1.0, -2 * PI * k / N) * odd[k];
-        x[k    ] = even[k] + t;
+        x[k] = even[k] + t;
         x[k+N/2] = even[k] - t;
     }
 }

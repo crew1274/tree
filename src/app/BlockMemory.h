@@ -244,6 +244,7 @@ class BlockMemory
     	void fft(CArray& x);
     	bool isSineWave(std::vector<float> arr, int threshold);
     	RedisBridge* rb;
+    	InfluxBridge* ib;
 };
 //float ConvertADCValue(float value, CalculateType Type);
 #endif /* SRC_APP_BLOCKMEMORY_H_ */

@@ -186,6 +186,12 @@ using namespace Poco::Redis;
 using namespace Poco::Data;
 using namespace Poco::Data::Keywords;
 
+
+/*
+ * _host InfluxDB server IP
+ * _port InfluxDB server port
+ * _token InfluxDB auth. token
+ * */
 class InfluxBridge
 {
 public:

@@ -9,7 +9,7 @@
 
 //----------------------------------------------------------------------------------------------//
 InfluxBridge::InfluxBridge(std::string _host, int _port, std::string _token):
-logger(Logger::get("ArangoBridge")), token(_token)
+logger(Logger::get("InfluxBridge")), token(_token)
 {
 	session = new HTTPClientSession( _host, _port); //建立HTTP session
 }
@@ -23,12 +23,12 @@ bool InfluxBridge::Write(std::string org, std::string bucket, std::string payloa
 	request.add("Authorization","Token " +  token);
 //	request.setContentType("application/x-www-form-urlencoded");
 	request.setContentLength(payload.length());
-
 	std::ostream& BodyOstream = session->sendRequest(request); // sends request, returns open stream
 	BodyOstream << payload;
 	HTTPResponse response;
 	istream& rs = session->receiveResponse(response);
 	string s((istreambuf_iterator<char>(rs)), istreambuf_iterator<char>());
+	// return status parse
 	cout << s << endl;
 	return true;
 }

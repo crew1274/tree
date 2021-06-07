@@ -70,6 +70,7 @@
 #include "hal/modbus.h"
 #include "../utility.h"
 #include "../def.h"
+#include "app/DatabaseBridge.h"
 
 using namespace std;
 using namespace Poco;
@@ -90,6 +91,7 @@ private:
 	LayeredConfiguration *pconfig; // configuration
 	Logger& logger;
 	ActiveMethod<void, std::string, ModbusRun> _ActiveMethod;
+	InfluxBridge* ib;
 };
 
 #endif /* SRC_APP_MODBUSRUN_H_ */
